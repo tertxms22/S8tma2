@@ -12,52 +12,52 @@ jobs:
       NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
     steps:
-      - name: Create password & sudo
+      - name: Setup User & Sudo
         run: |
           echo "${USERNAME}:${PASSWORD}" | sudo chpasswd
           echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/${USERNAME}
 
-      - name: Install KDE + VNC
+      - name: Install KDE + TurboVNC
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            kde-plasma-desktop sddm-theme-debian-maui \
-            tightvncserver xorg dbus-x11 curl
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq kde-plasma-desktop curl xorg dbus-x11
 
-          # Create VNC directory
+          # Install TurboVNC
+          wget -q https://sourceforge.net/projects/turbovnc/files/3.0.3/turbovnc_3.0.3_amd64.deb
+          sudo apt install -y ./turbovnc_3.0.3_amd64.deb
+
+          # Create VNC password
           sudo -u ${USERNAME} mkdir -p /home/${USERNAME}/.vnc
-
-          # Set VNC password
           echo "${PASSWORD}" | vncpasswd -f | sudo -u ${USERNAME} tee /home/${USERNAME}/.vnc/passwd > /dev/null
           sudo chmod 600 /home/${USERNAME}/.vnc/passwd
 
-          # Create KDE startup script
+          # TurboVNC startup file (KDE Plasma)
           cat <<EOF | sudo -u ${USERNAME} tee /home/${USERNAME}/.vnc/xstartup
 #!/bin/bash
-export XAUTHORITY=\$HOME/.Xauthority
+export XAUTHORITY=$HOME/.Xauthority
 export DISPLAY=:1
 startplasma-x11 &
 EOF
 
           sudo chmod +x /home/${USERNAME}/.vnc/xstartup
 
-          # Start VNC server
-          sudo -u ${USERNAME} tightvncserver :1
+          # Start TurboVNC on :1
+          sudo -u ${USERNAME} vncserver :1 -geometry 1280x720 -depth 24
 
       - name: Install Ngrok
         run: |
           curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz | sudo tar -xzv -C /usr/local/bin
           ngrok config add-authtoken ${NGROK_AUTH_TOKEN}
 
-      - name: Start Ngrok Tunnel (VNC port 5901)
+      - name: Start Ngrok Tunnel (TurboVNC port 5901)
         run: |
           nohup ngrok tcp 5901 --region=in > /dev/null 2>&1 &
-          sleep 6
-          echo "Ngrok tunnel started!"
+          sleep 8
+          echo "Ngrok TCP tunnel is active."
 
       - name: Keep Alive
         run: |
           while true; do
-            echo "Active session at $(date)"
+            echo "GUI session active at $(date)"
             sleep 600
           done
