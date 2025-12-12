@@ -1,63 +1,69 @@
-name: b3n8-2m9q-7v1x
+name: Setup KDE Plasma Runner + Ngrok + VNC
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  gui-runner:
+  setup-gui-runner:
     runs-on: ubuntu-latest
     env:
-      USERNAME: runner
-      PASSWORD: Arshath8
       NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      USERNAME: runner
+      PASSWORD: runner
 
     steps:
-      - name: Setup User & Sudo
+      - uses: actions/checkout@v4
+
+      - name: Ensure runner user has sudo
         run: |
           echo "${USERNAME}:${PASSWORD}" | sudo chpasswd
           echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/${USERNAME}
 
-      - name: Install KDE X11 + TurboVNC (same as XRDP requires)
+      - name: Install KDE Plasma + VNC server
         run: |
+          echo ">>> Installing KDE Plasma Desktop + VNC..."
           sudo apt-get update -qq
-
-          # Install KDE X11 version
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            plasma-desktop kde-standard xorg dbus-x11 curl
+            kde-plasma-desktop konsole dbus-x11 xorg \
+            tigervnc-standalone-server tigervnc-common tigervnc-tools
 
-          # Install TurboVNC
-          wget -q https://sourceforge.net/projects/turbovnc/files/3.0.3/turbovnc_3.0.3_amd64.deb
-          sudo apt install -y ./turbovnc_3.0.3_amd64.deb
+          mkdir -p /home/${USERNAME}/.vnc
+          echo ${PASSWORD} | vncpasswd -f > /home/${USERNAME}/.vnc/passwd
+          chmod 600 /home/${USERNAME}/.vnc/passwd
+          chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.vnc
 
-          # Create VNC password
-          sudo -u ${USERNAME} mkdir -p /home/${USERNAME}/.vnc
-          echo "${PASSWORD}" | vncpasswd -f | sudo -u ${USERNAME} tee /home/${USERNAME}/.vnc/passwd > /dev/null
-          sudo chmod 600 /home/${USERNAME}/.vnc/passwd
-
-          # EXACT XRDP-style startup
-          cat <<EOF | sudo -u ${USERNAME} tee /home/${USERNAME}/.vnc/xstartup
-#!/bin/bash
-startplasma-x11 &
-EOF
-
-          sudo chmod +x /home/${USERNAME}/.vnc/xstartup
-
-          # Start TurboVNC
-          sudo -u ${USERNAME} vncserver :1 -geometry 1280x720 -depth 24
+          # KDE startup
+          echo "startplasma-x11" > /home/${USERNAME}/.xsession
+          chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.xsession
 
       - name: Install Ngrok
         run: |
-          curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz | sudo tar -xzv -C /usr/local/bin
+          echo ">>> Installing Ngrok..."
+          curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz \
+            | sudo tar -xz -C /usr/local/bin
           ngrok config add-authtoken ${NGROK_AUTH_TOKEN}
 
-      - name: Start Ngrok Tunnel
+      - name: Start VNC + Ngrok Tunnel
         run: |
-          nohup ngrok tcp 5901 --region=in > /dev/null 2>&1 &
-          sleep 8
+          echo ">>> Starting VNC server..."
+          sudo -u ${USERNAME} vncserver :1 -geometry 1280x800 -depth 24 -localhost no
 
-      - name: Keep Alive
-        run: |
-          while true; do
-            echo "Running at $(date)"
-            sleep 600
-          done
+          echo ">>> Starting Ngrok TCP tunnel (India region)..."
+          nohup ngrok tcp 5901 --region=in > /dev/null 2>&1 &
+
+          sleep 6  # give ngrok time to start
+
+          echo ">>> Fetching Ngrok public address..."
+          NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+
+          echo "=== CONNECTION INFO ==="
+          echo "USERNAME: ${USERNAME}"
+          echo "PASSWORD: ${PASSWORD}"
+          echo "Ngrok VNC Address:"
+          echo "    ${NGROK_URL}"
+          echo
+          echo ">>> Keeping runner alive..."
+          tail -f /dev/null
