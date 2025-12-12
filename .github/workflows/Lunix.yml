@@ -31,17 +31,15 @@ jobs:
           echo "${PASSWORD}" | vncpasswd -f | sudo -u ${USERNAME} tee /home/${USERNAME}/.vnc/passwd > /dev/null
           sudo chmod 600 /home/${USERNAME}/.vnc/passwd
 
-          # KDE Plasma startup (Escape $HOME)
+          # Clean KDE xstartup (NO XAUTHORITY, NO DISPLAY)
           cat <<EOF | sudo -u ${USERNAME} tee /home/${USERNAME}/.vnc/xstartup
 #!/bin/bash
-export XAUTHORITY=\$HOME/.Xauthority
-export DISPLAY=:1
 startplasma-x11 &
 EOF
 
           sudo chmod +x /home/${USERNAME}/.vnc/xstartup
 
-          # Start TurboVNC
+          # Start TurboVNC server
           sudo -u ${USERNAME} vncserver :1 -geometry 1280x720 -depth 24
 
       - name: Install Ngrok
@@ -53,7 +51,6 @@ EOF
         run: |
           nohup ngrok tcp 5901 --region=in > /dev/null 2>&1 &
           sleep 8
-          echo "Ngrok tunnel active."
 
       - name: Keep Alive
         run: |
