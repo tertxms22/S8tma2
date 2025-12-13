@@ -1,0 +1,46 @@
+name: b3n8-2m9q-7v1x
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-gui-runner:
+    runs-on: ubuntu-latest
+    env:
+      USERNAME: runner
+      PASSWORD: Arshath8
+      NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+    steps:
+      - name: Setup User & Sudo
+        run: |
+          echo "${USERNAME}:${PASSWORD}" | sudo chpasswd
+          echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/${USERNAME}
+
+      - name: Install KDE + xrdp
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq kde-plasma-desktop xorg dbus-x11 xrdp curl
+
+          echo "startplasma-x11" > /home/${USERNAME}/.xsession
+          echo "exec startplasma-x11" > /home/${USERNAME}/.xinitrc
+          sudo chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.xsession /home/${USERNAME}/.xinitrc
+
+          sudo systemctl enable --now xrdp
+
+      - name: Setup Ngrok
+        run: |
+          curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz | sudo tar -xzv -C /usr/local/bin
+          ngrok config add-authtoken ${NGROK_AUTH_TOKEN}
+
+      - name: Start RDP Tunnel
+        run: |
+          nohup ngrok tcp 3389 --region=in > /dev/null 2>&1 &
+          sleep 5
+
+      - name: Keep Alive
+        run: |
+          while true; do
+            echo "Session active at $(date)"
+            sleep 600
+          done
