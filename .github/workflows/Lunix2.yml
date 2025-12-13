@@ -1,4 +1,4 @@
-name: KDE Plasma + TurboVNC + Orchis Theme
+name: KDE Plasma + TurboVNC + Orchis Theme (Old VNC Style)
 
 on:
   workflow_dispatch:
@@ -17,25 +17,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup runner user
+      - name: Ensure runner user has sudo
         run: |
           echo "${USERNAME}:${PASSWORD}" | sudo chpasswd
           echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/${USERNAME}
 
-      - name: Install KDE Plasma (X11) + dependencies
+      # -------------------------------------------------
+      # KDE Plasma (X11) — REQUIRED for startplasma-x11
+      # -------------------------------------------------
+      - name: Install KDE Plasma X11
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            plasma-desktop kde-standard konsole dbus-x11 xorg git curl \
-            mesa-utils
+            plasma-desktop plasma-workspace-x11 kde-standard \
+            konsole dbus-x11 xorg git curl mesa-utils
 
+      # -------------------
+      # Install TurboVNC
+      # -------------------
       - name: Install TurboVNC
         run: |
           cd /tmp
           wget -q https://sourceforge.net/projects/turbovnc/files/3.0.3/turbovnc_3.0.3_amd64.deb
           sudo apt install -y ./turbovnc_3.0.3_amd64.deb
 
-      - name: Configure TurboVNC + KDE startup
+      # -------------------------------------------------
+      # TurboVNC config — OLD VNC STYLE (IMPORTANT)
+      # -------------------------------------------------
+      - name: Configure TurboVNC (old VNC logic)
         run: |
           sudo -u ${USERNAME} mkdir -p /home/${USERNAME}/.vnc
 
@@ -45,16 +54,14 @@ jobs:
           sudo chmod 600 /home/${USERNAME}/.vnc/passwd
           sudo chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.vnc
 
-          # XRDP-style startup (THIS IS IMPORTANT)
-          cat <<EOF | sudo -u ${USERNAME} tee /home/${USERNAME}/.vnc/xstartup
-#!/bin/bash
-unset SESSION_MANAGER
-unset DBUS_SESSION_BUS_ADDRESS
-exec startplasma-x11 &
-EOF
+          # EXACT SAME AS YOUR OLD VNC WORKFLOW
+          echo "startplasma-x11" | sudo -u ${USERNAME} tee /home/${USERNAME}/.xsession
+          sudo chmod +x /home/${USERNAME}/.xsession
+          sudo chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.xsession
 
-          sudo chmod +x /home/${USERNAME}/.vnc/xstartup
-
+      # -----------------------
+      # Install Orchis KDE Theme
+      # -----------------------
       - name: Install Orchis KDE Theme
         run: |
           sudo -u ${USERNAME} bash <<'EOF'
@@ -65,30 +72,43 @@ EOF
           ./install.sh
           EOF
 
-      - name: Apply Orchis Theme (Dark)
+      # -----------------------
+      # Apply Orchis Dark Theme
+      # -----------------------
+      - name: Apply Orchis Theme
         run: |
-          sudo -u ${USERNAME} bash <<'EOF'
-          lookandfeeltool -a org.vinceliuice.Orchis-dark.desktop || true
-          EOF
+          sudo -u ${USERNAME} lookandfeeltool -a org.vinceliuice.Orchis-dark.desktop || true
 
-      - name: Start TurboVNC (1080p High Quality)
+      # -----------------------
+      # Start TurboVNC (HQ)
+      # -----------------------
+      - name: Start TurboVNC Server
         run: |
           sudo -u ${USERNAME} /opt/TurboVNC/bin/vncserver :1 \
             -geometry 1920x1080 -depth 24 -quality 90
 
+      # -----------------------
+      # Install Ngrok
+      # -----------------------
       - name: Install Ngrok
         run: |
           curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz \
             | sudo tar -xz -C /usr/local/bin
           ngrok config add-authtoken ${NGROK_AUTH_TOKEN}
 
-      - name: Start Ngrok (India region)
+      # -----------------------
+      # Start Ngrok (India)
+      # -----------------------
+      - name: Start Ngrok Tunnel
         run: |
           nohup ngrok tcp 5901 --region=in --log=stdout > ngrok.log 2>&1 &
           sleep 6
-          echo "Ngrok log:"
+          echo "Ngrok output:"
           cat ngrok.log || true
 
+      # -----------------------
+      # Keep Runner Alive
+      # -----------------------
       - name: Keep runner alive
         run: |
           tail -f /dev/null
