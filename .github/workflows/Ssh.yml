@@ -1,0 +1,87 @@
+name: SSH Runner + Tailscale + Ngrok
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ssh-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300   # 5 hours
+
+    env:
+      TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      # --------------------
+      # Install SSH
+      # --------------------
+      - name: Install OpenSSH
+        run: |
+          sudo apt update
+          sudo apt install -y openssh-server
+
+      - name: Configure SSH
+        run: |
+          sudo systemctl start ssh
+          sudo systemctl enable ssh
+          echo "runner ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/runner
+          sudo passwd -d runner
+
+      # --------------------
+      # Install Tailscale (Optional)
+      # --------------------
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Authenticate Tailscale
+        run: |
+          sudo tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=gh-ngrok-runner || true
+
+      # --------------------
+      # Install Ngrok
+      # --------------------
+      - name: Install Ngrok
+        run: |
+          curl -fsSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+            | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
+            | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update
+          sudo apt install -y ngrok
+
+      - name: Authenticate Ngrok
+        run: |
+          ngrok config add-authtoken $NGROK_AUTH_TOKEN
+
+      # --------------------
+      # Start Ngrok SSH Tunnel
+      # --------------------
+      - name: Start Ngrok TCP Tunnel (SSH)
+        run: |
+          echo ">>> Starting Ngrok SSH tunnel..."
+          ngrok tcp 22 --log=stdout &
+          sleep 10
+
+          echo
+          echo "===== SSH CONNECTION INFO ====="
+          curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url'
+          echo
+          echo "Example:"
+          echo "ssh runner@<host> -p <port>"
+          echo "================================"
+          echo
+
+      # --------------------
+      # Keep Alive
+      # --------------------
+      - name: Keep session alive
+        run: |
+          echo "Keeping runner alive for 5 hours..."
+          sleep 18000
