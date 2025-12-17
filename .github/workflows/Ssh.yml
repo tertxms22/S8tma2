@@ -1,4 +1,4 @@
-name: SSH Runner + Tailscale + Ngrok
+name: SSH Runner + Ngrok
 
 on:
   workflow_dispatch:
@@ -12,7 +12,6 @@ jobs:
     timeout-minutes: 300   # 5 hours
 
     env:
-      TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
       NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
     steps:
@@ -24,7 +23,7 @@ jobs:
       - name: Install OpenSSH
         run: |
           sudo apt update
-          sudo apt install -y openssh-server
+          sudo apt install -y openssh-server jq
 
       - name: Configure SSH
         run: |
@@ -32,17 +31,6 @@ jobs:
           sudo systemctl enable ssh
           echo "runner ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/runner
           sudo passwd -d runner
-
-      # --------------------
-      # Install Tailscale (Optional)
-      # --------------------
-      - name: Install Tailscale
-        run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-
-      - name: Authenticate Tailscale
-        run: |
-          sudo tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=gh-ngrok-runner || true
 
       # --------------------
       # Install Ngrok
