@@ -1,4 +1,4 @@
-name: SSH Runner + Ngrok
+name: SSH Runner + Ngrok (Password)
 
 on:
   workflow_dispatch:
@@ -13,6 +13,7 @@ jobs:
 
     env:
       NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      SSH_PASSWORD: runner123   # you can change this
 
     steps:
       - uses: actions/checkout@v3
@@ -25,12 +26,28 @@ jobs:
           sudo apt update
           sudo apt install -y openssh-server jq
 
-      - name: Configure SSH
+      # --------------------
+      # Configure SSH with password
+      # --------------------
+      - name: Configure SSH (Password Auth)
         run: |
           sudo systemctl start ssh
           sudo systemctl enable ssh
+
+          echo "runner:${SSH_PASSWORD}" | sudo chpasswd
           echo "runner ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/runner
-          sudo passwd -d runner
+
+          sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sudo sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+
+          sudo systemctl restart ssh
+
+          echo
+          echo "===== SSH LOGIN CREDENTIALS ====="
+          echo "Username : runner"
+          echo "Password : ${SSH_PASSWORD}"
+          echo "================================"
+          echo
 
       # --------------------
       # Install Ngrok
@@ -51,25 +68,21 @@ jobs:
       # --------------------
       # Start Ngrok SSH Tunnel
       # --------------------
-      - name: Start Ngrok TCP Tunnel (SSH)
+      - name: Start Ngrok SSH Tunnel
         run: |
-          echo ">>> Starting Ngrok SSH tunnel..."
           ngrok tcp 22 --log=stdout &
           sleep 10
 
           echo
-          echo "===== SSH CONNECTION INFO ====="
+          echo "===== NGROK SSH ADDRESS ====="
           curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url'
-          echo
-          echo "Example:"
-          echo "ssh runner@<host> -p <port>"
-          echo "================================"
+          echo "============================="
           echo
 
       # --------------------
       # Keep Alive
       # --------------------
-      - name: Keep session alive
+      - name: Keep Alive
         run: |
-          echo "Keeping runner alive for 5 hours..."
+          echo "Runner will stay alive for 5 hours"
           sleep 18000
